@@ -1,27 +1,26 @@
-# SafeHer 🛡️ - Women's Safety App v3.0
+# SafeHer 🛡️
 
-## 📌 Problem Statement
-Women's safety is a critical concern in India. SafeHer provides real-time safety features, emergency alerts, and safe route navigation to empower women.
+A women's safety application built with Next.js to provide real-time safety features and emergency support.
 
-## ✨ Key Features - All 9 Complete
-1. **SOS Emergency Alert** - One-tap alert to trusted contacts + police
-2. **Live Location Sharing** - Real-time GPS tracking with family
-3. **Safe Route Navigation** - AI suggests safest routes based on crime data
-4. **Fake Call Feature** - Escape uncomfortable situations
-5. **Voice-Activated SOS** - Trigger alert with voice command
-6. **Community Alerts** - Crowdsourced safety reports
-7. **Emergency Contacts** - Quick dial trusted people
-8. **Safety Tips** - Location-based safety advice
-9. **Incident Reporting** - Report harassment anonymously
+## ✨ Features
+- **SOS Emergency Alert** - One-tap alert to emergency contacts
+- **Live Location Sharing** - Share real-time location with trusted people
+- **Safe Route Navigation** - Find safer routes for travel
+- **Fake Call** - Trigger fake incoming call to exit situations
+- **Voice-Activated SOS** - Trigger SOS using voice commands
+- **Community Alerts** - Real-time alerts from other users
+- **Emergency Contacts** - Add and manage trusted contacts
+- **Safety Tips** - Location-based safety recommendations
+- **Incident Reporting** - Report and view safety incidents nearby
 
 ## 🛠️ Tech Stack
-- **Framework**: Next.js 14, React
+- **Framework**: Next.js 14 + React 18
 - **Styling**: Tailwind CSS
 - **Maps**: Google Maps API
-- **Backend**: Firebase
-- **Auth**: Firebase Authentication
+- **Backend & Database**: Firebase
+- **Authentication**: Firebase Auth
 
-## 🚀 Setup Instructions
+## 🚀 Getting Started
 ```bash
 git clone https://github.com/snehikapamarthi/safeher.git
 cd safeher
