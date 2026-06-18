@@ -1,36 +1,29 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# SafeHer 🛡️ - Women's Safety App v3.0
 
-## Getting Started
+## 📌 Problem Statement
+Women's safety is a critical concern in India. SafeHer provides real-time safety features, emergency alerts, and safe route navigation to empower women.
 
-First, run the development server:
+## ✨ Key Features - All 9 Complete
+1. **SOS Emergency Alert** - One-tap alert to trusted contacts + police
+2. **Live Location Sharing** - Real-time GPS tracking with family
+3. **Safe Route Navigation** - AI suggests safest routes based on crime data
+4. **Fake Call Feature** - Escape uncomfortable situations
+5. **Voice-Activated SOS** - Trigger alert with voice command
+6. **Community Alerts** - Crowdsourced safety reports
+7. **Emergency Contacts** - Quick dial trusted people
+8. **Safety Tips** - Location-based safety advice
+9. **Incident Reporting** - Report harassment anonymously
 
+## 🛠️ Tech Stack
+- **Framework**: Next.js 14, React
+- **Styling**: Tailwind CSS
+- **Maps**: Google Maps API
+- **Backend**: Firebase
+- **Auth**: Firebase Authentication
+
+## 🚀 Setup Instructions
 ```bash
+git clone https://github.com/snehikapamarthi/safeher.git
+cd safeher
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
