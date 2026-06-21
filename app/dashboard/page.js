@@ -1,396 +1,444 @@
 'use client'
-
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { auth, db } from '../../lib/firebase'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
+import { ref, push, onValue, remove } from 'firebase/database'
 
 export default function Dashboard() {
-  const [contacts, setContacts] = useState([])
-  const [newContactName, setNewContactName] = useState('')
-  const [newContactPhone, setNewContactPhone] = useState('')
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [darkMode, setDarkMode] = useState(false)
-  const [history, setHistory] = useState([])
-  const [userEmail, setUserEmail] = useState('snehikapamarthi@gmail.com')
+  const [contacts, setContacts] = useState([])
+  const [contactName, setContactName] = useState('')
+  const [contactPhone, setContactPhone] = useState('')
   const [showFakeCall, setShowFakeCall] = useState(false)
-  const [isListening, setIsListening] = useState(false)
-  const audioRef = useRef(null)
+  const [isRinging, setIsRinging] = useState(true)
+  const [callAccepted, setCallAccepted] = useState(false)
+  const [timer, setTimer] = useState(0)
+  const [history, setHistory] = useState([])
+  const [location, setLocation] = useState(null)
+  const [shakeCount, setShakeCount] = useState(0)
   const router = useRouter()
+  const ringtoneRef = useRef(null)
+  const callSoundRef = useRef(null)
+  const conversationRef = useRef(null)
+  const lastShakeTime = useRef(0)
 
-  // Load data
+  // Hide Scrollbar CSS
   useEffect(() => {
-    const savedContacts = localStorage.getItem('safeher_contacts')
-    const savedHistory = localStorage.getItem('safeher_history')
-    const savedTheme = localStorage.getItem('safeher_theme')
-    if (savedContacts) setContacts(JSON.parse(savedContacts))
-    if (savedHistory) setHistory(JSON.parse(savedHistory))
-    if (savedTheme === 'dark') setDarkMode(true)
+    const style = document.createElement('style')
+    style.innerHTML = `
+     .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+     .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+    `
+    document.head.appendChild(style)
   }, [])
 
-  // Save data
+  // 1. Auth + Load Firebase Data
   useEffect(() => {
-    localStorage.setItem('safeher_contacts', JSON.stringify(contacts))
-  }, [contacts])
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser)
 
-  useEffect(() => {
-    localStorage.setItem('safeher_history', JSON.stringify(history))
-  }, [history])
-
-  useEffect(() => {
-    localStorage.setItem('safeher_theme', darkMode? 'dark' : 'light')
-  }, [darkMode])
-
-  // OPTION 3: SHAKE TO SOS
-  useEffect(() => {
-    let lastX = 0, lastY = 0, lastZ = 0
-    let lastTime = 0
-    let shakeCount = 0
-
-    const handleMotion = (event) => {
-      const current = event.accelerationIncludingGravity
-      if (!current) return
-
-      const currentTime = new Date().getTime()
-      if ((currentTime - lastTime) > 100) {
-        const diffTime = currentTime - lastTime
-        lastTime = currentTime
-
-        const speed = Math.abs(current.x + current.y + current.z - lastX - lastY - lastZ) / diffTime * 10000
-
-        if (speed > 800) { // Shake threshold
-          shakeCount++
-          if (shakeCount >= 3) { // 3 shakes = SOS
-            shakeCount = 0
-            sendSOS()
-            if (navigator.vibrate) navigator.vibrate([200, 100, 200])
+        const contactsRef = ref(db, `users/${currentUser.uid}/contacts`)
+        onValue(contactsRef, (snapshot) => {
+          const data = snapshot.val()
+          if (data) {
+            const contactsArray = Object.entries(data).map(([id, val]) => ({ id,...val }))
+            setContacts(contactsArray)
+          } else {
+            setContacts([])
           }
-        }
-
-        lastX = current.x
-        lastY = current.y
-        lastZ = current.z
-      }
-    }
-
-    if (window.DeviceMotionEvent) {
-      window.addEventListener('devicemotion', handleMotion)
-    }
-    return () => window.removeEventListener('devicemotion', handleMotion)
-  }, [contacts])
-
-  // OPTION 4: VOICE COMMAND "Help Help"
-  useEffect(() => {
-    if (!('webkitSpeechRecognition' in window)) return
-
-    const recognition = new window.webkitSpeechRecognition()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = 'en-US'
-
-    let helpCount = 0
-    let lastHelpTime = 0
-
-    recognition.onresult = (event) => {
-      const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase()
-      const currentTime = new Date().getTime()
-
-      if (transcript.includes('help')) {
-        if (currentTime - lastHelpTime < 3000) {
-          helpCount++
-          if (helpCount >= 2) {
-            helpCount = 0
-            sendSOS()
-            if (navigator.vibrate) navigator.vibrate([200, 100, 200])
-          }
-        } else {
-          helpCount = 1
-        }
-        lastHelpTime = currentTime
-      }
-    }
-
-    recognition.start()
-    setIsListening(true)
-
-    return () => {
-      recognition.stop()
-      setIsListening(false)
-    }
-  }, [contacts])
-
-  const addContact = () => {
-    if (newContactName && newContactPhone) {
-      setContacts([...contacts, { name: newContactName, phone: newContactPhone }])
-      setNewContactName('')
-      setNewContactPhone('')
-    } else {
-      alert('Please enter both name and phone number')
-    }
-  }
-
-  const deleteContact = (index) => {
-    setContacts(contacts.filter((_, i) => i!== index))
-  }
-
-  // 🚨 SEND SOS - WITH VIBRATION
-  const sendSOS = () => {
-    if (contacts.length === 0) {
-      alert('⚠️ Please add emergency contacts first!')
-      return
-    }
-
-    // OPTION 2: VIBRATION
-    if (navigator.vibrate) {
-      navigator.vibrate([300, 100, 300, 100, 300]) // SOS pattern
-    }
-
-    if (!navigator.geolocation) {
-      alert('❌ Geolocation not supported')
-      return
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = position.coords.latitude
-        const lon = position.coords.longitude
-        const locationUrl = `https://maps.google.com/?q=${lat},${lon}`
-        const time = new Date().toLocaleString()
-
-        const message = `🚨 EMERGENCY! I need help!\n\n📍 My Location: ${locationUrl}\n\n⏰ Time: ${time}\n\nSent via SafeHer App`
-
-        setHistory([{ time, location: locationUrl, contacts: contacts.length },...history])
-
-        contacts.forEach((contact, index) => {
-          let phone = contact.phone.replace(/[\s-+]/g, '')
-          if (!phone.startsWith('91')) phone = `91${phone}`
-          const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
-          setTimeout(() => {
-            const link = document.createElement('a')
-            link.href = waUrl
-            link.target = '_blank'
-            link.rel = 'noopener noreferrer'
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
-          }, index * 1500)
         })
-      },
-      (error) => {
-        alert('❌ Location access denied. Please enable location.')
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+
+        const historyRef = ref(db, `users/${currentUser.uid}/sos_history`)
+        onValue(historyRef, (snapshot) => {
+          const data = snapshot.val()
+          if (data) {
+            const historyArray = Object.entries(data).map(([id, val]) => ({ id,...val })).reverse()
+            setHistory(historyArray)
+          } else {
+            setHistory([])
+          }
+        })
+      } else {
+        router.push('/login')
+      }
+      setLoading(false)
+    })
+    return () => unsubscribe()
+  }, [router])
+
+  // 2. Get Location
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => console.log('Location error:', err)
+      )
+    }
+  }, [])
+
+  // 3. Shake Detection - 3 Shakes = SOS
+  useEffect(() => {
+    let lastX = 0, lastY = 0, lastZ = 0, threshold = 15
+    const handleMotion = (e) => {
+      const acc = e.accelerationIncludingGravity
+      if (!acc) return
+      const diff = Math.abs(acc.x - lastX) + Math.abs(acc.y - lastY) + Math.abs(acc.z - lastZ)
+      if (diff > threshold) {
+        const now = Date.now()
+        if (now - lastShakeTime.current > 1000) {
+          setShakeCount(prev => {
+            const newCount = prev + 1
+            if (newCount >= 3) {
+              handleSOS()
+              return 0
+            }
+            setTimeout(() => setShakeCount(0), 2000)
+            return newCount
+          })
+          lastShakeTime.current = now
+        }
+      }
+      lastX = acc.x
+      lastY = acc.y
+      lastZ = acc.z
+    }
+    if (window.DeviceMotionEvent) window.addEventListener('devicemotion', handleMotion)
+    return () => window.removeEventListener('devicemotion', handleMotion)
+  }, [contacts, location])
+
+  // 4. Voice Detection - Help Help
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+      const recognition = new SpeechRecognition()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.onresult = (event) => {
+        const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase()
+        if (transcript.includes('help help') || transcript.includes('helphelp')) {
+          handleSOS()
+        }
+      }
+      recognition.onerror = () => setTimeout(() => recognition.start(), 1000)
+      try {
+        recognition.start()
+      } catch (e) {
+        console.log('Speech recognition failed')
+      }
+      return () => recognition.stop()
+    }
+  }, [contacts, location])
+
+  // 5. Logout
+  const handleLogout = async () => {
+    await signOut(auth)
+    router.push('/login')
+  }
+
+  // 6. Add Contact
+  const handleAddContact = () => {
+    if (contactName && contactPhone.length === 10 && user) {
+      const contactsRef = ref(db, `users/${user.uid}/contacts`)
+      push(contactsRef, { name: contactName, phone: contactPhone })
+      setContactName('')
+      setContactPhone('')
+    } else {
+      alert('Enter valid name and 10 digit phone number')
+    }
+  }
+
+  // 7. Delete Contact
+  const deleteContact = (id) => {
+    if (user) {
+      const contactRef = ref(db, `users/${user.uid}/contacts/${id}`)
+      remove(contactRef)
+    }
+  }
+
+  // 8. Send SOS - WhatsApp + Location + History
+  const handleSOS = () => {
+    if (contacts.length === 0) {
+      alert('Add at least one contact first!')
+      return
+    }
+    const locLink = location
+? `https://maps.google.com/?q=${location.lat},${location.lng}`
+      : 'Location not available'
+    const message = `🚨 EMERGENCY ALERT from ${user?.email}!\nI need immediate help!\nMy location: ${locLink}\nTime: ${new Date().toLocaleString()}`
+    contacts.forEach(c => {
+      window.open(`https://wa.me/91${c.phone}?text=${encodeURIComponent(message)}`, '_blank')
+    })
+    if (user) {
+      const historyRef = ref(db, `users/${user.uid}/sos_history`)
+      push(historyRef, {
+        timestamp: Date.now(),
+        location: locLink,
+        contactsNotified: contacts.length,
+        method: 'SOS/Shake/Voice'
+      })
+    }
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200])
+    alert(`SOS sent to ${contacts.length} contacts!`)
+  }
+
+  // 9. START FAKE CALL - SHOWS INCOMING CALL SCREEN 🔊
+  const startFakeCall = () => {
+    setShowFakeCall(true)
+    setIsRinging(true)
+    setCallAccepted(false)
+    setTimer(0)
+
+    if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500])
+
+    // INCOMING CALL RINGTONE START
+    setTimeout(() => {
+      if (ringtoneRef.current) {
+        ringtoneRef.current.loop = true
+        ringtoneRef.current.volume = 1.0
+        ringtoneRef.current.muted = false
+
+        const playPromise = ringtoneRef.current.play()
+        if (playPromise!== undefined) {
+          playPromise
+         .then(() => console.log('Ringtone playing ✅'))
+         .catch(err => {
+              console.log('Ringtone blocked:', err)
+            })
+        }
+      }
+    }, 100)
+  }
+
+  // 10. ACCEPT CALL - GREEN BUTTON
+  const acceptCall = () => {
+    setIsRinging(false)
+    setCallAccepted(true)
+
+    // Stop ringtone
+    if (ringtoneRef.current) {
+      ringtoneRef.current.pause()
+      ringtoneRef.current.currentTime = 0
+    }
+
+    // Play call connected beep
+    if (callSoundRef.current) {
+      callSoundRef.current.play().catch(e => console.log('Call sound failed'))
+    }
+
+    // Start conversation sound
+    setTimeout(() => {
+      if (conversationRef.current) {
+        conversationRef.current.loop = true
+        conversationRef.current.volume = 0.6
+        conversationRef.current.play().catch(e => console.log('Conversation failed'))
+      }
+    }, 500)
+  }
+
+  // 11. Timer
+  useEffect(() => {
+    let interval
+    if (showFakeCall && callAccepted) {
+      interval = setInterval(() => setTimer(prev => prev + 1), 1000)
+    }
+    return () => clearInterval(interval)
+  }, [showFakeCall, callAccepted])
+
+  // 12. End Call
+  const endFakeCall = () => {
+    setShowFakeCall(false)
+    setIsRinging(true)
+    setCallAccepted(false)
+    setTimer(0)
+    if (ringtoneRef.current) {
+      ringtoneRef.current.pause()
+      ringtoneRef.current.currentTime = 0
+    }
+    if (callSoundRef.current) {
+      callSoundRef.current.pause()
+      callSoundRef.current.currentTime = 0
+    }
+    if (conversationRef.current) {
+      conversationRef.current.pause()
+      conversationRef.current.currentTime = 0
+    }
+  }
+
+  const formatTime = (sec) => {
+    const m = Math.floor(sec / 60).toString().padStart(2, '0')
+    const s = (sec % 60).toString().padStart(2, '0')
+    return `${m}:${s}`
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 to-purple-50">
+        <div className="text-2xl font-bold text-pink-600">Loading...</div>
+      </div>
     )
   }
 
-  // 📞 FAKE CALL - WITH RINGTONE + VIBRATION
-  const fakeCall = () => {
-    setShowFakeCall(true)
-
-    // OPTION 1: RINGTONE
-    audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3')
-    audioRef.current.loop = true
-    audioRef.current.play().catch(e => console.log('Audio failed:', e))
-
-    // OPTION 2: VIBRATION
-    if (navigator.vibrate) {
-      navigator.vibrate([1000, 500, 1000, 500, 1000]) // Call pattern
-    }
-  }
-
-  const endFakeCall = () => {
-    setShowFakeCall(false)
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current = null
-    }
-    if (navigator.vibrate) navigator.vibrate(0) // Stop vibration
-  }
-
-  const handleLogout = () => {
-    if (confirm('Are you sure you want to logout?')) {
-      localStorage.clear()
-      router.push('/login')
-    }
-  }
-
-  const bgClass = darkMode? 'bg-gray-900' : 'bg-gradient-to-br from-pink-50 to-purple-50'
-  const cardClass = darkMode? 'bg-gray-800' : 'bg-white'
-  const textClass = darkMode? 'text-white' : 'text-gray-800'
-  const subTextClass = darkMode? 'text-gray-300' : 'text-gray-600'
-
-  return (
-    <>
-      {/* FAKE CALL FULL SCREEN */}
-      {showFakeCall && (
-        <div
-          className="fixed bg-black flex flex-col items-center justify-between py-20"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            width: '100vw',
-            height: '100vh',
-            zIndex: 99999
-          }}
-        >
-          <div className="text-center">
-            <p className="text-gray-400 text-lg animate-pulse">Incoming call...</p>
-            <h1 className="text-white text-5xl font-bold mt-4">Mom ❤️</h1>
-            <p className="text-gray-400 text-lg mt-2">Mobile +91 98765 43210</p>
-          </div>
-
-          <div className="flex gap-24">
-            <button
-              onClick={endFakeCall}
-              className="bg-red-600 w-20 h-20 rounded-full flex items-center justify-center text-4xl transform hover:scale-110 transition active:scale-95"
-            >
-              📞
-            </button>
-            <button
-              onClick={endFakeCall}
-              className="bg-green-600 w-20 h-20 rounded-full flex items-center justify-center text-4xl transform hover:scale-110 transition active:scale-95"
-            >
-              📞
-            </button>
-          </div>
-          <p className="text-gray-500 text-sm">Tap to answer or decline</p>
+  // INCOMING CALL SCREEN - WITH ACCEPT/DECLINE BUTTONS
+  if (showFakeCall) {
+    return (
+      <div className="fixed inset-0 bg-gradient-to-br from-green-400 to-green-600 flex flex-col items-center justify-between py-20 text-white">
+        <div className="text-center">
+          <p className="text-lg opacity-80">{isRinging? 'Incoming call' : 'Call in progress'}</p>
+          <h1 className="text-4xl font-bold mt-2">Mom</h1>
+          <p className="text-2xl mt-4">{isRinging? 'Ringing...' : formatTime(timer)}</p>
         </div>
-      )}
 
-      <div className={`min-h-screen ${bgClass} p-4 transition-colors duration-300`}>
-        <div className="max-w-2xl mx-auto">
+        <div className="w-32 h-32 bg-white/20 rounded-full flex items-center justify-center text-6xl animate-pulse">
+          👩
+        </div>
 
-          {/* Header */}
-          <div className="flex justify-between items-center mb-6 pt-4">
-            <div>
-              <h1 className={`text-3xl font-bold ${darkMode? 'text-pink-400' : 'text-pink-600'}`}>
-                SafeHer Dashboard
-              </h1>
-              <p className={`text-sm ${subTextClass} mt-1`}>
-                Welcome: {userEmail} ✅
-              </p>
-              <p className={`text-xs ${subTextClass} mt-1`}>
-                💡 Shake phone or say "Help Help" to trigger SOS {isListening && '🎤'}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setDarkMode(!darkMode)}
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
-              >
-                {darkMode? '☀️' : '🌙'}
-              </button>
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-              >
-                Logout
-              </button>
-            </div>
+        {isRinging? (
+          // INCOMING CALL - Accept/Decline buttons
+          <div className="flex gap-20">
+            <button
+              onClick={endFakeCall}
+              className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center text-4xl shadow-2xl"
+            >
+              📞
+            </button>
+            <button
+              onClick={acceptCall}
+              className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center text-4xl animate-pulse shadow-2xl"
+            >
+              📞
+            </button>
           </div>
+        ) : (
+          // CALL ACCEPTED - Only End button
+          <button
+            onClick={endFakeCall}
+            className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center text-4xl animate-pulse shadow-2xl"
+          >
+            📞
+          </button>
+        )}
 
-          {/* SOS & Fake Call */}
-          <div className={`${cardClass} rounded-2xl shadow-xl p-6 mb-6`}>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={sendSOS}
-                className="bg-red-600 hover:bg-red-700 text-white text-xl font-bold py-6 px-4 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95"
-              >
-                🚨 SEND SOS
-              </button>
-              <button
-                onClick={fakeCall}
-                className="bg-purple-600 hover:bg-purple-700 text-white text-xl font-bold py-6 px-4 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95"
-              >
-                📞 FAKE CALL
-              </button>
-            </div>
-            <p className={`text-xs ${subTextClass} mt-3 text-center`}>
-              Shake 3 times or say "Help Help" twice for emergency
+        <audio
+          ref={ringtoneRef}
+          src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
+          playsInline
+          preload="auto"
+        />
+
+        <audio
+          ref={callSoundRef}
+          src="https://assets.mixkit.co/active_storage/sfx/235/235-preview.mp3"
+          playsInline
+          preload="auto"
+        />
+
+        <audio
+          ref={conversationRef}
+          src="https://assets.mixkit.co/active_storage/sfx/256/256-preview.mp3"
+          playsInline
+          preload="auto"
+        />
+      </div>
+    )
+  }
+
+  // MAIN DASHBOARD
+  return (
+    <div className={`min-h-screen p-4 ${darkMode? 'bg-gray-900 text-white' : 'bg-gradient-to-br from-pink-50 to-purple-50'}`}>
+      <div className="max-w-md mx-auto">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-pink-600">SafeHer Dashboard</h1>
+            <p className="text-sm mt-1">Welcome: {user?.email} ✅</p>
+            <p className="text-xs mt-1">
+              💡 Shake 3x or say "Help Help" for SOS 🎤 {shakeCount > 0 && `(${shakeCount}/3)`}
             </p>
+            {location && <p className="text-xs text-green-600 mt-1">📍 Location Active</p>}
           </div>
+          <div className="flex gap-2">
+            <button onClick={() => setDarkMode(!darkMode)} className="px-4 py-2 bg-gray-700 text-white rounded-lg">
+              {darkMode? '☀️' : '🌙'}
+            </button>
+            <button onClick={handleLogout} className="px-4 py-2 bg-red-500 text-white rounded-lg">
+              Logout
+            </button>
+          </div>
+        </div>
 
-          {/* Add Contact */}
-          <div className={`${cardClass} rounded-2xl shadow-xl p-6 mb-6`}>
-            <h2 className={`text-xl font-bold ${textClass} mb-4`}>Add Trusted Contact</h2>
-            <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="Contact Name"
-                value={newContactName}
-                onChange={(e) => setNewContactName(e.target.value)}
-                className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 ${
-                  darkMode? 'bg-gray-700 text-white placeholder-gray-400' : 'bg-white text-gray-800'
-                }`}
-              />
-              <input
-                type="tel"
-                placeholder="Phone Number (10 digits)"
-                value={newContactPhone}
-                onChange={(e) => setNewContactPhone(e.target.value)}
-                className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 ${
-                  darkMode? 'bg-gray-700 text-white placeholder-gray-400' : 'bg-white text-gray-800'
-                }`}
-              />
-              <button
-                onClick={addContact}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition"
-              >
-                Add Contact
-              </button>
+        <div className={`${darkMode? 'bg-gray-800' : 'bg-white/80'} rounded-2xl p-6 shadow-xl mb-4`}>
+          <div className="grid grid-cols-2 gap-4">
+            <button onClick={handleSOS} className="bg-red-500 text-white py-6 rounded-xl font-bold text-lg shadow-lg active:scale-95 transition">
+              🚨 SEND SOS
+            </button>
+            <button onClick={startFakeCall} className="bg-purple-500 text-white py-6 rounded-xl font-bold text-lg shadow-lg active:scale-95 transition">
+              📞 FAKE CALL
+            </button>
+          </div>
+          <p className={`text-xs text-center mt-3 ${darkMode? 'text-gray-400' : 'text-gray-600'}`}>
+            Shake phone 3 times or say "Help Help" for emergency
+          </p>
+        </div>
+
+        <div className={`rounded-2xl p-6 shadow-xl mb-4 ${darkMode? 'bg-gray-800' : 'bg-white'}`}>
+          <h2 className="text-xl font-bold mb-4">Add Trusted Contact</h2>
+          <input type="text" placeholder="Contact Name" value={contactName} onChange={(e) => setContactName(e.target.value)} className={`w-full p-3 rounded-lg mb-3 border ${darkMode? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+          <input type="tel" placeholder="Phone Number (10 digits)" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} maxLength={10} className={`w-full p-3 rounded-lg mb-3 border ${darkMode? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+          <button onClick={handleAddContact} className="w-full bg-blue-500 text-white py-3 rounded-lg font-bold active:scale-95 transition">
+            Add Contact
+          </button>
+        </div>
+
+        <div className={`rounded-2xl p-6 shadow-xl mb-4 ${darkMode? 'bg-gray-800' : 'bg-white'}`}>
+          <h2 className="text-xl font-bold mb-4">Your Contacts ({contacts.length})</h2>
+          {contacts.length === 0? (
+            <p className={`${darkMode? 'text-gray-400' : 'text-gray-500'} text-center py-4`}>
+              No contacts yet. Add someone to send SOS.
+            </p>
+          ) : (
+            contacts.map((c) => (
+              <div key={c.id} className={`flex justify-between items-center p-3 rounded-lg mb-2 ${darkMode? 'bg-gray-700' : 'bg-gray-100'}`}>
+                <div>
+                  <span className="font-semibold">{c.name}</span>
+                  <span className="ml-2 text-sm">{c.phone}</span>
+                </div>
+                <button onClick={() => deleteContact(c.id)} className="text-red-500 font-bold px-3 py-1">✕</button>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className={`rounded-2xl p-6 shadow-xl ${darkMode? 'bg-gray-800' : 'bg-white'}`}>
+          <h2 className="text-xl font-bold mb-4">SOS History</h2>
+          {history.length === 0? (
+            <p className={`${darkMode? 'text-gray-400' : 'text-gray-500'} text-center py-4`}>
+              No SOS alerts sent yet.
+            </p>
+          ) : (
+            <div className="max-h-64 overflow-y-auto no-scrollbar">
+              {history.map((h) => (
+                <div key={h.id} className={`p-3 rounded-lg mb-2 ${darkMode? 'bg-gray-700' : 'bg-red-50'}`}>
+                  <p className="text-sm font-semibold text-red-600">
+                    🚨 {new Date(h.timestamp).toLocaleString()}
+                  </p>
+                  <p className="text-xs mt-1">Notified: {h.contactsNotified} contacts</p>
+                  <a href={h.location} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 underline">
+                    View Location
+                  </a>
+                </div>
+              ))}
             </div>
-          </div>
-
-          {/* Contacts List */}
-          <div className={`${cardClass} rounded-2xl shadow-xl p-6 mb-6`}>
-            <h2 className={`text-xl font-bold ${textClass} mb-4`}>Your Contacts ({contacts.length})</h2>
-            <div className="space-y-3">
-              {contacts.length === 0? (
-                <p className={`text-center ${subTextClass} py-8`}>No contacts added yet</p>
-              ) : (
-                contacts.map((contact, index) => (
-                  <div
-                    key={index}
-                    className={`flex items-center justify-between ${darkMode? 'bg-gray-700' : 'bg-gray-50'} p-4 rounded-lg`}
-                  >
-                    <div>
-                      <p className={`font-semibold ${textClass}`}>{contact.name}</p>
-                      <p className={`text-sm ${subTextClass}`}>{contact.phone}</p>
-                    </div>
-                    <button
-                      onClick={() => deleteContact(index)}
-                      className="text-red-600 hover:text-red-800 font-semibold px-4 py-2 rounded-lg hover:bg-red-50 transition"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Emergency History */}
-          <div className={`${cardClass} rounded-2xl shadow-xl p-6`}>
-            <h2 className={`text-xl font-bold ${textClass} mb-4`}>Emergency History ({history.length})</h2>
-            <div className="space-y-3">
-              {history.length === 0? (
-                <p className={`text-center ${subTextClass} py-8`}>No SOS triggered yet</p>
-              ) : (
-                history.slice(0, 5).map((item, index) => (
-                  <div key={index} className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
-                    <p className="font-semibold text-red-800">🚨 SOS Triggered</p>
-                    <p className="text-sm text-gray-700">{item.time}</p>
-                    <a href={item.location} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
-                      View Location
-                    </a>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
+          )}
         </div>
       </div>
-    </>
+    </div>
   )
 }
